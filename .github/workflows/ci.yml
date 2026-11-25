@@ -32,3 +32,40 @@ jobs:
           path: |
             core/build/phase-sweep.md
             core/build/reports/tests
+
+  player-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: node tests
+        run: node --test "player/test/*.test.js"
+      - name: phase sweep table
+        if: always()
+        run: cat player/out/phase-sweep-js.md || echo "no table written"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: player-node-report
+          path: player/out
+
+  player-shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: install playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: screenshots and user stories
+        run: node player/e2e/shots.mjs docs/review-2026-11-25/shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: player-shots
+          path: docs/review-2026-11-25/shots

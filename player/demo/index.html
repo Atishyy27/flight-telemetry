@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flight library demo (synthetic data)</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d1117; --card:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e; --acc:#2f81f7; --bad:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); padding:16px; max-width:760px; margin-inline:auto; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.sub { color:var(--dim); margin:0 0 16px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
+  #tabs { display:flex; flex-wrap:wrap; gap:8px; }
+  button, select { font:inherit; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  button.tab[aria-selected="true"] { border-color:var(--acc); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  #badge { display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid var(--acc); color:var(--acc); }
+  #errors { color:var(--bad); min-height:1.4em; word-break:break-word; }
+  textarea { width:100%; min-height:110px; font:12px/1.4 ui-monospace, monospace; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:8px 0 0; }
+  dt { color:var(--dim); }
+  dd { margin:0; }
+</style>
+</head>
+<body>
+<h1>Flight library</h1>
+<p class="sub">Synthetic flights only. Saved flights play like the built-in ones.</p>
+
+<div id="tabs" role="tablist" aria-label="Flights"></div>
+<div id="errors" role="alert"></div>
+
+<div class="card" id="leg">
+  <strong id="leg-title"></strong>
+  <dl>
+    <dt>Route</dt><dd id="leg-route"></dd>
+    <dt>Block</dt><dd id="leg-block"></dd>
+    <dt>Numbers from</dt><dd><span id="badge">timer</span></dd>
+    <dt>Takeoff vs plan</dt><dd id="offset">on plan</dd>
+  </dl>
+</div>
+
+<div class="row">
+  <label for="mode">Source</label>
+  <select id="mode">
+    <option value="timer">timer</option>
+    <option value="replay">recorded trace</option>
+  </select>
+</div>
+
+<div class="card">
+  <strong>Add a flight (JSON)</strong>
+  <textarea id="import-text" aria-label="Flight JSON" spellcheck="false"></textarea>
+  <div class="row">
+    <button id="import-btn" type="button">Import</button>
+    <button id="template-btn" type="button">Load example</button>
+    <button id="reset-btn" type="button">Remove saved</button>
+  </div>
+</div>
+
+<script src="../fixtures.js"></script>
+<script src="../flights.js"></script>
+<script src="../sensors-replay.js"></script>
+<script>
+(function () {
+  var BUILTIN = V2_FIXTURES.builtin;
+  var PLANNED_TAKEOFF = 900;           // seconds after tap, synthetic
+  var DELAY = 17 * 60;                 // the synthetic trace takes off 17 minutes late
+  var current = 0;
+
+  // Synthetic recorded trace: 1 Hz, quiet, then a 30 s takeoff roll.
+  var trace = [];
+  for (var t = 0; t < 3000; t++) {
+    var inRoll = t >= PLANNED_TAKEOFF + DELAY && t < PLANNED_TAKEOFF + DELAY + 30;
+    trace.push({ t: t, ax: inRoll ? 3 : 0, pressureHpa: 1013.25 });
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var data = V2_FLIGHTLIB.loadAll(localStorage, BUILTIN);
+
+  function mmss(sec) {
+    var s = Math.abs(Math.round(sec)), m = Math.floor(s / 60);
+    return (sec < 0 ? "-" : "+") + m + " min " + (s % 60) + " s";
+  }
+
+  function render() {
+    data = V2_FLIGHTLIB.loadAll(localStorage, BUILTIN);
+    if (current >= data.legs.length) current = 0;
+    $("errors").textContent = data.errors.join(" | ");
+    var tabs = $("tabs");
+    tabs.innerHTML = "";
+    data.legs.forEach(function (leg, i) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", i === current ? "true" : "false");
+      b.textContent = leg.id + "  " + leg.from + " to " + leg.to;
+      b.onclick = function () { current = i; render(); };
+      tabs.appendChild(b);
+    });
+    var leg = data.legs[current];
+    $("leg-title").textContent = leg.id;
+    $("leg-route").textContent = leg.fromFull + " to " + leg.toFull + ", " + leg.km + " km";
+    $("leg-block").textContent = leg.mins + " min, departs " + leg.dep;
+    var st = V2_REPLAY.resolveState({ mode: $("mode").value, samples: trace, nowT: 3000, plannedTakeoffT: PLANNED_TAKEOFF });
+    $("badge").textContent = st.label;
+    $("offset").textContent = st.offsetS ? mmss(st.offsetS) + " (timeline shifted)" : "on plan";
+  }
+
+  $("mode").onchange = render;
+  $("import-btn").onclick = function () {
+    var obj;
+    try { obj = JSON.parse($("import-text").value); } catch (e) { $("errors").textContent = "That is not valid JSON."; return; }
+    var r = V2_FLIGHTLIB.addFlight(localStorage, obj, BUILTIN);
+    if (!r.ok) { $("errors").textContent = r.errors.join(" | "); return; }
+    $("import-text").value = "";
+    render();
+    current = V2_FLIGHTLIB.loadAll(localStorage, BUILTIN).legs.length - 1;
+    render();
+  };
+  $("template-btn").onclick = function () { $("import-text").value = JSON.stringify(V2_FIXTURES.overseas, null, 1); };
+  $("reset-btn").onclick = function () { localStorage.removeItem(V2_FLIGHTLIB.KEY); current = 0; render(); };
+
+  render();
+})();
+</script>
+</body>
+</html>
