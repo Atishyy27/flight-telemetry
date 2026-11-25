@@ -193,7 +193,9 @@ private fun testLandmarkFinder() {
     check("returns null when nothing is within range", farAway == null, "got $farAway")
 }
 
-fun main() {
+fun runAllChecks(): Int {
+    passed = 0
+    failed = 0
     testGeo()
     testAltitudeFilter()
     testPhaseDetector()
@@ -201,5 +203,9 @@ fun main() {
     testLandmarkFinder()
     println()
     println("$passed passed, $failed failed")
-    if (failed > 0) exitProcess(1)
+    return failed
+}
+
+fun main() {
+    if (runAllChecks() > 0) exitProcess(1)
 }
