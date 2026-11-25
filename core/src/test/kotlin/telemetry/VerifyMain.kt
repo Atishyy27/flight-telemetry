@@ -92,27 +92,27 @@ private fun testPhaseDetector() {
     val detector = FlightPhaseDetector()
     check("starts on GROUND", detector.phase == FlightPhase.GROUND)
 
-    // Sustained climb vertical speed for >3s should trigger CLIMB.
+    // Sustained climb vertical speed for >20s should trigger CLIMB.
     var phase = FlightPhase.GROUND
-    repeat(5) {
+    repeat(25) {
         phase = detector.update(1.0, AltitudeReading(fusedAltitudeM = it * 5.0, verticalSpeedMps = 5.0, baroAltitudeM = 0.0))
     }
     check("sustained climb rate triggers CLIMB", phase == FlightPhase.CLIMB, "got $phase")
 
-    // Level off for >3s should trigger CRUISE.
-    repeat(5) {
+    // Level off for >20s should trigger CRUISE.
+    repeat(25) {
         phase = detector.update(1.0, AltitudeReading(fusedAltitudeM = 300.0, verticalSpeedMps = 0.1, baroAltitudeM = 0.0))
     }
     check("leveling off triggers CRUISE", phase == FlightPhase.CRUISE, "got $phase")
 
     // Sustained descent should trigger DESCENT.
-    repeat(5) {
+    repeat(25) {
         phase = detector.update(1.0, AltitudeReading(fusedAltitudeM = 300.0 - it * 5.0, verticalSpeedMps = -5.0, baroAltitudeM = 0.0))
     }
     check("sustained descent triggers DESCENT", phase == FlightPhase.DESCENT, "got $phase")
 
     // Back near ground reference altitude (0), level off -> LANDED.
-    repeat(5) {
+    repeat(25) {
         phase = detector.update(1.0, AltitudeReading(fusedAltitudeM = 0.0, verticalSpeedMps = 0.0, baroAltitudeM = 0.0))
     }
     check("near ground + level triggers LANDED", phase == FlightPhase.LANDED, "got $phase")
