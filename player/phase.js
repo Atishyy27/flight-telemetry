@@ -5,7 +5,8 @@
  *
  * A phone in an airliner sees cabin pressure, not outside pressure. The cabin rate is
  * limited to about 500 ft/min up and 300 ft/min down (about 2.5 and 1.5 m/s), so the
- * thresholds sit well under those and must hold for sustainSeconds.
+ * thresholds sit well under those and must hold for sustainSeconds. Landing is "level again
+ * after a descent of at least minDescentDropM", not a comparison with the origin elevation.
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
@@ -28,7 +29,8 @@
       update: function (dt, accel, pressureHpa) {
         if (!(dt > 0)) throw new Error("dt must be > 0");
         var baro = baroAltitudeM(pressureHpa, ref);
-        if (!init) {
+        if (!init || dt > 5) {
+          // first sample, or a gap (throttled sensor, dropout): re-seed instead of integrating across it
           alt = baro; vs = 0; init = true;
           return { fusedAltitudeM: alt, verticalSpeedMps: vs, baroAltitudeM: baro };
         }
@@ -49,26 +51,26 @@
     var descent = opts.descentThresholdMps != null ? opts.descentThresholdMps : 0.8;
     var level = opts.levelThresholdMps != null ? opts.levelThresholdMps : 0.35;
     var sustain = opts.sustainSeconds != null ? opts.sustainSeconds : 20;
-    var band = opts.groundAltitudeBandM != null ? opts.groundAltitudeBandM : 400;
-    var phase = "GROUND", groundRef = NaN, timer = 0;
+    var minDrop = opts.minDescentDropM != null ? opts.minDescentDropM : 100;
+    var phase = "GROUND", descentStartAlt = NaN, timer = 0;
 
     function hold(cond, dt) { timer = cond ? timer + dt : 0; return timer >= sustain; }
     function go(next) { phase = next; timer = 0; }
 
     return {
       get phase() { return phase; },
-      update: function (dt, reading) {
+      update: function (rawDt, reading) {
+        var dt = Math.min(rawDt, 5); // a gap in samples counts as 5 s at most
         var vs = reading.verticalSpeedMps;
         if (phase === "GROUND") {
-          groundRef = isNaN(groundRef) ? reading.fusedAltitudeM : Math.min(groundRef, reading.fusedAltitudeM);
           if (hold(vs > climb, dt)) go("CLIMB");
         } else if (phase === "CLIMB") {
           if (hold(Math.abs(vs) < level, dt)) go("CRUISE");
         } else if (phase === "CRUISE") {
-          if (hold(vs < -descent, dt)) go("DESCENT");
+          if (hold(vs < -descent, dt)) { go("DESCENT"); descentStartAlt = reading.fusedAltitudeM; }
         } else if (phase === "DESCENT") {
-          var near = Math.abs(reading.fusedAltitudeM - groundRef) < band;
-          if (hold(near && Math.abs(vs) < level, dt)) go("LANDED");
+          var dropped = descentStartAlt - reading.fusedAltitudeM >= minDrop;
+          if (hold(dropped && Math.abs(vs) < level, dt)) go("LANDED");
         }
         return phase;
       },

@@ -95,3 +95,29 @@ test("a jolt does not change the phase (sustain)", () => {
 test("dt must be positive", () => {
   assert.throws(() => phase.createAltitudeFilter().update(0, 0, 1013.25));
 });
+
+test("a long gap in samples does not flip the phase", () => {
+  const f = phase.createAltitudeFilter();
+  const det = phase.createPhaseDetector();
+  const flat = 1013.25;
+  let r = f.update(1, 0, flat);
+  det.update(1, r);
+  // 10 minutes with no samples, then one sample at a pressure 30 m higher (a weather shift)
+  r = f.update(600, 0, flat * Math.pow(1 - 30 / 44330, 5.255));
+  det.update(600, r);
+  assert.strictEqual(det.phase, "GROUND");
+  assert.ok(Math.abs(r.verticalSpeedMps) < 0.01, "vs " + r.verticalSpeedMps);
+});
+
+test("landing works when the destination is 2000 m above the origin", () => {
+  const det = phase.createPhaseDetector();
+  const step = (n, alt, vs) => { for (let i = 0; i < n; i++) det.update(1, { fusedAltitudeM: alt, verticalSpeedMps: vs, baroAltitudeM: alt }); };
+  step(25, 0, 3);       // climb
+  step(25, 2100, 0);    // cruise (cabin about 2100 m)
+  step(25, 2000, -1.2); // descent starts
+  assert.strictEqual(det.phase, "DESCENT");
+  step(25, 2000, 0);    // level, but only a 100 m drop would be needed; none yet
+  assert.strictEqual(det.phase, "DESCENT");
+  for (let i = 0; i < 25; i++) det.update(1, { fusedAltitudeM: 1800, verticalSpeedMps: 0, baroAltitudeM: 1800 });
+  assert.strictEqual(det.phase, "LANDED");
+});

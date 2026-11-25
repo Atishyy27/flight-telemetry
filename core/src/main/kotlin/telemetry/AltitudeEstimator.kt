@@ -23,6 +23,11 @@ class ComplementaryAltitudeFilter(
     private var verticalSpeedMps = 0.0
     private var initialized = false
 
+    private companion object {
+        /** A longer gap (a throttled sensor, a dropout) re-seeds the filter instead of integrating across it. */
+        const val MAX_STEP_SECONDS = 5.0
+    }
+
     private fun baroAltitudeM(pressureHpa: Double): Double =
         44330.0 * (1.0 - (pressureHpa / referencePressureHpa).pow(1.0 / 5.255))
 
@@ -31,7 +36,7 @@ class ComplementaryAltitudeFilter(
         require(dtSeconds > 0.0) { "dtSeconds must be > 0" }
         val baroAltitude = baroAltitudeM(pressureHpa)
 
-        if (!initialized) {
+        if (!initialized || dtSeconds > MAX_STEP_SECONDS) {
             altitudeM = baroAltitude
             verticalSpeedMps = 0.0
             initialized = true
@@ -54,28 +59,28 @@ enum class FlightPhase { GROUND, CLIMB, CRUISE, DESCENT, LANDED }
  * Sustained-threshold state machine over fused vertical speed. A phone in an airliner sees the
  * cabin pressure, whose rate is limited to about 500 ft/min up and 300 ft/min down (about 2.5
  * and 1.5 m/s), so the thresholds sit well under those and the condition must hold for
- * [sustainSeconds] before a transition. [groundAltitudeBandM] is wide because the destination
- * can sit hundreds of metres above or below the origin.
+ * [sustainSeconds] before a transition. Landing is "level again after a descent of at least
+ * [minDescentDropM]", not a comparison with the origin, because the destination can sit
+ * hundreds of metres above or below it. A gap in samples longer than 5 s counts as 5 s.
  */
 class FlightPhaseDetector(
     private val climbThresholdMps: Double = 1.0,
     private val descentThresholdMps: Double = 0.8,
     private val levelThresholdMps: Double = 0.35,
     private val sustainSeconds: Double = 20.0,
-    private val groundAltitudeBandM: Double = 400.0,
+    private val minDescentDropM: Double = 100.0,
 ) {
     var phase: FlightPhase = FlightPhase.GROUND
         private set
 
-    private var groundReferenceAltitudeM = Double.NaN
+    private var descentStartAltitudeM = Double.NaN
     private var conditionTimer = 0.0
 
-    fun update(dtSeconds: Double, reading: AltitudeReading): FlightPhase {
+    fun update(rawDtSeconds: Double, reading: AltitudeReading): FlightPhase {
+        val dtSeconds = minOf(rawDtSeconds, 5.0)
         val vs = reading.verticalSpeedMps
         when (phase) {
             FlightPhase.GROUND -> {
-                groundReferenceAltitudeM = if (groundReferenceAltitudeM.isNaN()) reading.fusedAltitudeM
-                else minOf(groundReferenceAltitudeM, reading.fusedAltitudeM)
                 conditionTimer = if (vs > climbThresholdMps) conditionTimer + dtSeconds else 0.0
                 if (conditionTimer >= sustainSeconds) {
                     phase = FlightPhase.CLIMB
@@ -93,12 +98,13 @@ class FlightPhaseDetector(
                 conditionTimer = if (vs < -descentThresholdMps) conditionTimer + dtSeconds else 0.0
                 if (conditionTimer >= sustainSeconds) {
                     phase = FlightPhase.DESCENT
+                    descentStartAltitudeM = reading.fusedAltitudeM
                     conditionTimer = 0.0
                 }
             }
             FlightPhase.DESCENT -> {
-                val nearGround = abs(reading.fusedAltitudeM - groundReferenceAltitudeM) < groundAltitudeBandM
-                conditionTimer = if (nearGround && abs(vs) < levelThresholdMps) conditionTimer + dtSeconds else 0.0
+                val dropped = descentStartAltitudeM - reading.fusedAltitudeM >= minDescentDropM
+                conditionTimer = if (dropped && abs(vs) < levelThresholdMps) conditionTimer + dtSeconds else 0.0
                 if (conditionTimer >= sustainSeconds) {
                     phase = FlightPhase.LANDED
                     conditionTimer = 0.0
