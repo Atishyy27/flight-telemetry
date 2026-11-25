@@ -5,3 +5,4 @@
 - 3 product pass: first-run path, friction, 4 references, users unknown (0 stars, 0 forks).
 - measured: python port of AltitudeEstimator.kt on synthetic cabin traces (plan section 3, F1).
 - 4 plan: docs/review-2026-11-25.md written and committed. No code. Stopped at the plan gate.
+- build: change 1 (7b2c41d, tests first in eaf14e8), change 2 (cac84b9), change 3 (87888fd), ci jobs and demo (6eb4ef9). CI run 45691632517: kotlin-core, player-node (30/30), player-shots all success. Shots committed.
