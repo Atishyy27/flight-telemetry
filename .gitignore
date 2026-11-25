@@ -4,3 +4,5 @@
 build/
 .idea/
 local.properties
+player/out/
+node_modules/
