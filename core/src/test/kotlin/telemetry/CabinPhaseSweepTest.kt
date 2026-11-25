@@ -33,6 +33,7 @@ private class CabinTrace(
     private val descentRate = descentFpm
 
     val trueDescentStartS: Double get() = holdEndS
+    val trueGroundS: Double get() = groundS
     val samples: List<Pair<Double, Double>>
 
     init {
@@ -105,8 +106,10 @@ class CabinPhaseSweepTest {
                     val run = runDetector(trace)
                     val sequence = run.transitions.map { it.first }
                     val descentAt = run.transitions.firstOrNull { it.first == FlightPhase.DESCENT }?.second
+                    val landedAt = run.transitions.firstOrNull { it.first == FlightPhase.LANDED }?.second
                     if (descentAt != null && descentAt < trace.trueDescentStartS) falseDescent++
-                    if (sequence == expected) {
+                    val landedInTime = landedAt != null && landedAt >= trace.trueGroundS && landedAt - trace.trueGroundS <= 120.0
+                    if (sequence == expected && landedInTime) {
                         correct++
                         delays += descentAt!! - trace.trueDescentStartS
                     }

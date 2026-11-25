@@ -39,7 +39,7 @@ function cabinTrace(opts) {
     var p = 1013.25 * Math.pow(1 - ft(t) * 0.3048 / 44330, 5.255) + gaussian(rng) * noise;
     samples.push({ t: t, pressureHpa: p, ax: 0 });
   }
-  return { samples: samples, trueDescentStart: holdEnd };
+  return { samples: samples, trueDescentStart: holdEnd, trueGround: ground };
 }
 
 // Longitudinal acceleration trace: quiet taxi, a takeoff roll of rollSeconds at rollAccel

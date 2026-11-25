@@ -43,8 +43,12 @@ function sweep(detect) {
         const res = detect(tr.samples);
         const seq = res.map((r) => r.phase);
         const d = res.find((r) => r.phase === "DESCENT");
+        const l = res.find((r) => r.phase === "LANDED");
         if (d && d.t < tr.trueDescentStart) falseDescent++;
-        if (JSON.stringify(seq) === JSON.stringify(EXPECTED)) {
+        // correct = right order AND descent within 60 s of the true start AND landed within 120 s of touchdown
+        if (JSON.stringify(seq) === JSON.stringify(EXPECTED) &&
+            d.t >= tr.trueDescentStart && d.t - tr.trueDescentStart <= 60 &&
+            l.t >= tr.trueGround && l.t - tr.trueGround <= 120) {
           correct++;
           maxDelay = Math.max(maxDelay, d.t - tr.trueDescentStart);
         }
@@ -66,6 +70,10 @@ test("phase sweep: before and after on synthetic cabin traces", () => {
   console.log(md);
   fs.mkdirSync("player/out", { recursive: true });
   fs.writeFileSync("player/out/phase-sweep-js.md", md);
+  // the "before" half must keep showing the problem, or the table proves nothing
+  const b50 = before.filter((b) => b.hz === 50);
+  assert.ok(b50.every((b) => b.correct < 20), "legacy detector should fail at 50 Hz");
+  assert.ok(before.some((b) => b.falseDescent > 0), "legacy detector should show false descents");
   for (const a of after) {
     assert.strictEqual(a.correct, 20, `correct sequence at ${a.hz} Hz, ${a.descentFpm} fpm`);
     assert.strictEqual(a.falseDescent, 0, `false descent at ${a.hz} Hz`);
@@ -120,4 +128,23 @@ test("landing works when the destination is 2000 m above the origin", () => {
   assert.strictEqual(det.phase, "DESCENT");
   for (let i = 0; i < 25; i++) det.update(1, { fusedAltitudeM: 1800, verticalSpeedMps: 0, baroAltitudeM: 1800 });
   assert.strictEqual(det.phase, "LANDED");
+});
+
+test("the detector itself caps a long step: one late sample cannot satisfy the sustain time", () => {
+  const det = phase.createPhaseDetector();
+  det.update(600, { fusedAltitudeM: 0, verticalSpeedMps: 3, baroAltitudeM: 0 });
+  assert.strictEqual(det.phase, "GROUND");
+});
+
+test("stronger noise (0.3 hPa) and a 5 hPa cruise pressure bump still give the right sequence at 1 and 5 Hz", () => {
+  for (const hz of [1, 5]) {
+    for (let seed = 0; seed < 5; seed++) {
+      const tr = cabinTrace({ hz, climbFpm: 500, descentFpm: 300, noiseHpa: 0.3, seed });
+      // a 30 s bump of 5 hPa in the middle of cruise (door, HVAC)
+      const mid = tr.trueDescentStart - 2400;
+      for (const s of tr.samples) if (s.t >= mid && s.t < mid + 30) s.pressureHpa += 5;
+      const seq = phase.detectPhases(tr.samples).map((r) => r.phase);
+      assert.deepStrictEqual(seq, EXPECTED, `hz ${hz} seed ${seed}`);
+    }
+  }
 });
