@@ -8,7 +8,7 @@ Everything here uses synthetic data. Nothing in the private player (phone/flight
 2. Click "Load example", then "Import". A third tab "T 300 DDD to EEE" appears and is selected. Reload the page: it is still there. (Change 2. A flight outside India is accepted; the old check rejected it.)
 3. Click "Remove saved". Back to 2 tabs. Type `{not json` in the box and Import: you get an error line, no crash.
 4. Set Source to "recorded trace". The badge changes, and "Takeoff vs plan" shows "+17 min 0 s (timeline shifted)". That is a synthetic trace where the plane leaves 17 minutes late. (Change 3.)
-5. Phase detection (Change 1): in a terminal in the repo run `node --test player/test/phase.test.js` (about 40 s). It prints the before and after table for 1, 5 and 50 Hz. The Kotlin version of the same table is in the CI run linked in the report.
+5. Phase detection (Change 1): in a terminal in the repo run `node --test player/test/phase.test.js` (about 40 s). It prints the before and after table for 1, 5 and 50 Hz. The Kotlin version of the same table is in the CI run linked in the report. The JS table counts a run as correct only if the order is right, DESCENT is within 60 s of the true start and LANDED within 120 s of touchdown (stricter than the first Kotlin red run, which checked order only).
 
 ## D7. Merge cards
 
@@ -43,4 +43,4 @@ These are for you to do in `phone/flight-player.html`. I did not open or run tha
 2. Badge and shift: paste `player/sensors-replay.js`. Where the Flight screen shows the status, show `V2_REPLAY.resolveState({mode:"timer",samples:[],nowT:t,plannedTakeoffT:0}).label`, and use `t - offsetS` as the time when the state offers one.
 3. Phase: paste `player/phase.js` only when a pressure source exists. Today the browser has none.
 
-Total tests in CI: Kotlin 29 legacy assertions plus 4 JUnit tests (2 legacy and sweep wrappers, 2 robustness); node 38.
+Total tests in CI: Kotlin 29 legacy assertions plus 4 JUnit tests (2 legacy and sweep wrappers, 2 robustness); node 40.
