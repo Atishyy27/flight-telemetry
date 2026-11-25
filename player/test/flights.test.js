@@ -123,3 +123,11 @@ test("a null entry in the saved array does not crash the merge", () => {
   assert.strictEqual(r.legs.length, 3);
   assert.strictEqual(r.errors.length, 1);
 });
+
+test("ids named like object properties are accepted", () => {
+  const odd = clone(fx.overseas);
+  odd.id = "constructor";
+  const s = fakeStorage();
+  assert.strictEqual(lib.addFlight(s, odd, fx.builtin).ok, true);
+  assert.strictEqual(lib.loadAll(s, fx.builtin).legs.length, 3);
+});

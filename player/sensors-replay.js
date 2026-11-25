@@ -17,18 +17,22 @@
     takeoffAccelMps2: 2.0,   // same numbers as sensors.js; still unmeasured on a real plane
     takeoffSustainS: 4.0,
     dropoutS: 10.0,          // no sample for this long: fall back to the timer
+    maxGapS: 1.0,            // a gap this long inside a roll breaks it
+    maxOffsetS: 3600,        // a shift beyond an hour is treated as a false detection
   };
 
   var SOURCES = { timer: "timer", replay: "recorded trace", device: "device" };
 
-  // First run of samples with |ax| above the threshold that lasts takeoffSustainS.
-  // rollStartT is where that run began; confirmedT is when it was long enough.
+  // First run of forward acceleration (ax above the threshold; braking is negative and ignored)
+  // that lasts takeoffSustainS with no gap in the samples. rollStartT is where that run
+  // began; confirmedT is when it was long enough.
   function detectTakeoff(samples, opts) {
     var o = Object.assign({}, DEFAULTS, opts || {});
     var runStart = null;
     for (var i = 0; i < samples.length; i++) {
       var s = samples[i];
-      if (Math.abs(s.ax || 0) > o.takeoffAccelMps2) {
+      if (runStart != null && i > 0 && s.t - samples[i - 1].t > o.maxGapS) runStart = null;
+      if ((s.ax || 0) > o.takeoffAccelMps2) {
         if (runStart == null) runStart = s.t;
         if (s.t - runStart >= o.takeoffSustainS) return { detected: true, rollStartT: runStart, confirmedT: s.t };
       } else {
@@ -53,17 +57,23 @@
     var o = Object.assign({}, DEFAULTS, opts || {});
     var mode = SOURCES[o.mode] ? o.mode : "timer";
     var samples = o.samples || [];
-    var timer = { source: "timer", label: SOURCES.timer, offsetS: 0, takeoff: null };
-    if (mode === "timer" || samples.length === 0) return timer;
+    var timer = { source: "timer", label: SOURCES.timer, offsetS: 0, takeoff: null, confirmed: false };
+    if (mode === "timer") return timer;
+    // Sensor mode but no usable samples: the timer runs and the last known shift is kept.
+    var lost = { source: "timer", label: "timer (sensor lost)", offsetS: o.lastOffsetS || 0, takeoff: null, confirmed: false };
+    if (samples.length === 0) return lost;
     var last = samples[samples.length - 1].t;
-    if (typeof o.nowT === "number" && o.nowT - last > o.dropoutS) return timer;
+    if (typeof o.nowT === "number" && o.nowT - last > o.dropoutS) return lost;
     var upTo = typeof o.nowT === "number" ? samples.filter(function (s) { return s.t <= o.nowT; }) : samples;
     var take = detectTakeoff(upTo, o);
+    var offset = take.detected ? correctTimeline(o.plannedTakeoffT, take.rollStartT) : 0;
+    if (Math.abs(offset) > o.maxOffsetS) { offset = 0; take = { detected: false, rollStartT: null, confirmedT: null }; }
     return {
       source: mode,
       label: SOURCES[mode],
-      offsetS: take.detected ? correctTimeline(o.plannedTakeoffT, take.rollStartT) : 0,
+      offsetS: offset,
       takeoff: take,
+      confirmed: take.detected,   // false until a takeoff has actually been seen
     };
   }
 

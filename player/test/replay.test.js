@@ -54,9 +54,10 @@ test("sensor dropout falls back to the timer", () => {
   assert.strictEqual(st.offsetS, 0);
 });
 
-test("empty trace falls back to the timer", () => {
+test("empty trace falls back to the timer and says the sensor is lost", () => {
   const st = rp.resolveState({ mode: "device", samples: [], nowT: 10, plannedTakeoffT: PLANNED_TAKEOFF });
-  assert.strictEqual(st.label, "timer");
+  assert.strictEqual(st.source, "timer");
+  assert.strictEqual(st.label, "timer (sensor lost)");
 });
 
 test("mode timer ignores a trace", () => {
@@ -81,4 +82,35 @@ test("takeoff not yet happened at nowT: no correction yet", () => {
 test("correctTimeline ignores non-numbers", () => {
   assert.strictEqual(rp.correctTimeline(900, null), 0);
   assert.strictEqual(rp.correctTimeline(NaN, 1000), 0);
+});
+
+test("dropout keeps the last known shift instead of jumping back", () => {
+  const trace = accelTrace({ endT: 2000, rollStartT: 1920 });
+  const live = rp.resolveState({ mode: "replay", samples: trace, nowT: 2000, plannedTakeoffT: PLANNED_TAKEOFF });
+  const lost = rp.resolveState({ mode: "replay", samples: trace, nowT: 2100, plannedTakeoffT: PLANNED_TAKEOFF, lastOffsetS: live.offsetS });
+  assert.strictEqual(lost.label, "timer (sensor lost)");
+  assert.strictEqual(lost.offsetS, live.offsetS);
+});
+
+test("before any takeoff the state is not confirmed", () => {
+  const trace = accelTrace({ endT: 600, rollStartT: null });
+  const st = rp.resolveState({ mode: "replay", samples: trace, nowT: 600, plannedTakeoffT: PLANNED_TAKEOFF });
+  assert.strictEqual(st.confirmed, false);
+});
+
+test("braking (negative acceleration) is not a takeoff", () => {
+  const trace = accelTrace({ endT: 600, rollStartT: 100, rollAccel: -3 });
+  assert.strictEqual(rp.detectTakeoff(trace).detected, false);
+});
+
+test("two samples far apart do not count as a sustained roll", () => {
+  const sparse = [{ t: 100, ax: 3 }, { t: 105, ax: 3 }, { t: 110, ax: 3 }];
+  assert.strictEqual(rp.detectTakeoff(sparse).detected, false);
+});
+
+test("a detection hours away from the plan is rejected, offset stays 0", () => {
+  const trace = accelTrace({ endT: 20000, rollStartT: 15000, hz: 1 });
+  const st = rp.resolveState({ mode: "replay", samples: trace, nowT: 20000, plannedTakeoffT: PLANNED_TAKEOFF });
+  assert.strictEqual(st.offsetS, 0);
+  assert.strictEqual(st.confirmed, false);
 });

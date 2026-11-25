@@ -103,7 +103,8 @@
     $("leg-block").textContent = leg.mins + " min, departs " + leg.dep;
     var st = V2_REPLAY.resolveState({ mode: $("mode").value, samples: trace, nowT: 3000, plannedTakeoffT: PLANNED_TAKEOFF });
     $("badge").textContent = st.label;
-    $("offset").textContent = st.offsetS ? mmss(st.offsetS) + " (timeline shifted)" : "on plan";
+    var waiting = $("mode").value !== "timer" && !st.confirmed && st.source !== "timer";
+    $("offset").textContent = st.offsetS ? mmss(st.offsetS) + " (timeline shifted)" : (waiting ? "waiting for takeoff" : "on plan");
   }
 
   $("mode").onchange = render;

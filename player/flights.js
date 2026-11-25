@@ -73,7 +73,7 @@
   function mergeFlights(builtin, saved) {
     var legs = builtin.slice();
     var errors = [];
-    var seen = {};
+    var seen = Object.create(null);
     builtin.forEach(function (l) { seen[l.id] = true; });
     saved.forEach(function (leg, i) {
       var errs = validateLeg(leg, "saved[" + i + "]: ");
